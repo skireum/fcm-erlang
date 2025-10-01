@@ -12,30 +12,34 @@
 -define(HTTP_OPTS, [{timeout, 5000}]).
 -define(REQ_OPTS, [{full_result, false}, {body_format, binary}]).
 
--spec push(list(binary()), map(), string(), string()) -> list(tuple()).
-push(RegIds, Message, State) ->
-    push(RegIds, Message, State, []).
+-spec push(list(binary()), map(), map()) -> list(tuple()).
+push(RegIds, Message, #{try_count := TryCount} = State) ->
+    push(RegIds, Message, State, [], TryCount).
 
 %% ----------------------------------------------------------------------
 %% internal
 %% ----------------------------------------------------------------------
-push([], _, State, Acc) ->
+push([], _, State, Acc, _) ->
     {ok, Acc, State};
+push([RegId| RegIds], Body, #{try_count := Try} = State0, Acc0, 0) ->
+    Acc = [{RegId, {error, refresh_token}} | Acc0],
+    push(RegIds, Body, State0, Acc, Try);
 push([RegId| RegIds] = AllRegIds, Body,
         #{
             auth_bearer         := AuthKey,
-            push_url            := PushUrl
-         } = State0, Acc0) ->
+            push_url            := PushUrl,
+            try_count           := Try
+         } = State0, Acc0, TryCount) ->
     case do_push(RegId, Body, AuthKey, PushUrl) of
         {ok, MsgId} ->
             Acc = [{RegId, MsgId} | Acc0],
-            push(RegIds, Body, State0, Acc);
+            push(RegIds, Body, State0, Acc, Try);
         {error, refresh_token} ->
             State = reload_access_token(State0),
-            push(AllRegIds, Body, State, Acc0);
+            push(AllRegIds, Body, State, Acc0, TryCount - 1);
         Error ->
             Acc = [{RegId, Error} | Acc0],
-            push(RegIds, Body, State0, Acc)
+            push(RegIds, Body, State0, Acc, Try)
     end.
 
 append_token(#{message := Message} = M, Token) ->
@@ -69,10 +73,12 @@ reload_access_token(#{service_file := ServiceFile} = State) ->
     {ok, #{access_token := AccessToken}} = google_oauth:get_access_token(ServiceFile, ?SCOPE),
     AuthorizationBearer = <<"Bearer ", AccessToken/binary>>,
     PushUrl = iolist_to_binary(["https://fcm.googleapis.com/v1/projects/", ProjectId ,"/messages:send"]),
+    TryCount = maps:get(try_count, State, 3),
     State#{
         push_url            => erlang:binary_to_list(PushUrl),
         auth_bearer         => erlang:binary_to_list(AuthorizationBearer),
-        token_tref          => erlang:send_after(timer:seconds(3540), self(), refresh_token)
+        token_tref          => erlang:send_after(timer:seconds(3540), self(), refresh_token),
+        try_count           => TryCount
     }.
 
 cancel_timer(#{token_tref := TimerRef}) ->

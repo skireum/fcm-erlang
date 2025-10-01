@@ -50,10 +50,11 @@ start_link(Name, Key) ->
 %% ------------------------------------------------------------------------
 %% gen_server callbacks
 %% ------------------------------------------------------------------------
-init([#{fcm_key := ApiKey}]) ->
+init([#{fcm_key := ApiKey} = MapOpts]) ->
     process_flag(trap_exit, true),
     GoogleKey = string:concat("key=", ApiKey),
-    {ok, #{auth_server_key => GoogleKey}};
+    TryCount = maps:get(try_count, MapOpts, 3),
+    {ok, #{auth_server_key => GoogleKey, try_count => TryCount}};
 init([MapOpts]) ->
     process_flag(trap_exit, true),
     application:ensure_all_started(google_oauth),
