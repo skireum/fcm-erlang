@@ -10,5 +10,3 @@ dep_google_oauth = git https://github.com/skireum/google_oauth_erlang.git otp28
 
 include $(if $(ERLANG_MK_FILENAME),$(ERLANG_MK_FILENAME),erlang.mk)
 
-ERLC_OPTS += $(ERLC_COMPILE_OPTS)
-TEST_ERLC_OPTS += $(ERLC_COMPILE_OPTS)
